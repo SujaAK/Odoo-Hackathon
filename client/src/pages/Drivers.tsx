@@ -19,8 +19,8 @@ export default function Drivers() {
   const [contact, setContact] = useState('');
   const [safetyScore, setSafetyScore] = useState('100');
   const [editId, setEditId] = useState<string | null>(null);
-  const [unlinkedUsers, setUnlinkedUsers] = useState<{ id: string; name: string; email: string }[]>([]);
-  const [selectedUserId, setSelectedUserId] = useState('');
+  const [driverEmail, setDriverEmail] = useState('');
+  const [credentialsModal, setCredentialsModal] = useState<{ email: string; tempPassword: string } | null>(null);
 
   useEffect(() => {
     fetchDrivers();
@@ -40,27 +40,6 @@ export default function Drivers() {
     }
   };
 
-  const fetchUnlinkedUsers = async (currentLinkedUserId?: string | null) => {
-    try {
-      const res = await api.get('/drivers/unlinked-users');
-      let users = res.data;
-      if (currentLinkedUserId) {
-        const exists = users.find((u: any) => u.id === currentLinkedUserId);
-        if (!exists) {
-          const currentDriver = drivers.find(d => d.userId === currentLinkedUserId);
-          if (currentDriver?.user) {
-            users = [currentDriver.user, ...users];
-          } else {
-            users = [{ id: currentLinkedUserId, name: 'Currently Linked Account', email: '' }, ...users];
-          }
-        }
-      }
-      setUnlinkedUsers(users);
-    } catch (err) {
-      console.error('Failed to fetch unlinked users:', err);
-    }
-  };
-
   const handleOpenAddModal = () => {
     setEditId(null);
     setName('');
@@ -69,11 +48,9 @@ export default function Drivers() {
     setLicenseExpiry('');
     setContact('');
     setSafetyScore('100');
-    setSelectedUserId('');
-    setUnlinkedUsers([]);
+    setDriverEmail('');
     setError('');
     setIsModalOpen(true);
-    fetchUnlinkedUsers();
   };
 
   const handleOpenEditModal = (driver: Driver) => {
@@ -84,34 +61,44 @@ export default function Drivers() {
     setLicenseExpiry(driver.licenseExpiry.split('T')[0]);
     setContact(driver.contact);
     setSafetyScore(driver.safetyScore.toString());
-    setSelectedUserId(driver.userId || '');
-    setUnlinkedUsers([]);
+    setDriverEmail('');
     setError('');
     setIsModalOpen(true);
-    fetchUnlinkedUsers(driver.userId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    const payload = {
-      name,
-      licenseNumber,
-      licenseCategory,
-      licenseExpiry,
-      contact,
-      safetyScore: parseFloat(safetyScore),
-      userId: selectedUserId || null,
-    };
-
     try {
       if (editId) {
+        const payload = {
+          name,
+          licenseNumber,
+          licenseCategory,
+          licenseExpiry,
+          contact,
+          safetyScore: parseFloat(safetyScore),
+        };
         await api.put(`/drivers/${editId}`, payload);
+        setIsModalOpen(false);
       } else {
-        await api.post('/drivers', payload);
+        const payload = {
+          name,
+          licenseNumber,
+          licenseCategory,
+          licenseExpiry,
+          contact,
+          safetyScore: parseFloat(safetyScore),
+          email: driverEmail,
+        };
+        const { data } = await api.post('/drivers', payload);
+        setIsModalOpen(false);
+        // Show the generated credentials to the FM
+        if (data.credentials) {
+          setCredentialsModal(data.credentials);
+        }
       }
-      setIsModalOpen(false);
       fetchDrivers();
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to save driver');
@@ -397,24 +384,22 @@ export default function Drivers() {
                 />
               </div>
 
-              <div>
-                <label className="label">Linked User Account (Optional)</label>
-                <select 
-                  className="select" 
-                  value={selectedUserId} 
-                  onChange={(e) => setSelectedUserId(e.target.value)}
-                >
-                  <option value="">-- No Linked User --</option>
-                  {unlinkedUsers.map(u => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.email || 'No email'})
-                    </option>
-                  ))}
-                </select>
-                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
-                  Links this operational driver profile to an authenticated login account.
-                </p>
-              </div>
+              {!editId && (
+                <div>
+                  <label className="label">Driver Login Email *</label>
+                  <input
+                    type="email"
+                    className="input"
+                    placeholder="e.g. driver.name@company.com"
+                    value={driverEmail}
+                    onChange={(e) => setDriverEmail(e.target.value)}
+                    required
+                  />
+                  <p style={{ fontSize: '0.75rem', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+                    A login account will be auto-created with a temporary password.
+                  </p>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '12px' }}>
                 <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>
@@ -425,6 +410,77 @@ export default function Drivers() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Credentials Modal — shown after creating a new driver */}
+      {credentialsModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>🎉 Driver Account Created</h2>
+            <p style={{ color: 'var(--color-text-secondary)', marginBottom: '20px' }}>
+              Share these credentials with the driver so they can log in:
+            </p>
+
+            <div style={{
+              background: 'var(--color-surface)',
+              borderRadius: '10px',
+              padding: '20px',
+              border: '1px solid var(--color-border)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+            }}>
+              <div>
+                <label className="label" style={{ marginBottom: '4px' }}>Email</label>
+                <div style={{
+                  fontFamily: 'monospace',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  color: 'var(--color-text-primary)',
+                  padding: '8px 12px',
+                  background: 'var(--color-bg)',
+                  borderRadius: '6px',
+                  userSelect: 'all',
+                }}>
+                  {credentialsModal.email}
+                </div>
+              </div>
+              <div>
+                <label className="label" style={{ marginBottom: '4px' }}>Temporary Password</label>
+                <div style={{
+                  fontFamily: 'monospace',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  color: 'var(--color-brand)',
+                  padding: '8px 12px',
+                  background: 'var(--color-bg)',
+                  borderRadius: '6px',
+                  userSelect: 'all',
+                }}>
+                  {credentialsModal.tempPassword}
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              marginTop: '8px',
+              padding: '10px 14px',
+              background: 'rgba(245, 158, 11, 0.1)',
+              borderRadius: '8px',
+              border: '1px solid rgba(245, 158, 11, 0.3)',
+              fontSize: '0.8rem',
+              color: 'var(--color-warning, #f59e0b)',
+            }}>
+              ⚠️ This password is shown only once. The driver should change it after first login.
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button className="btn btn-primary" onClick={() => setCredentialsModal(null)}>
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import bcrypt from 'bcryptjs';
 import prisma from '../lib/prisma';
 
 export const getAllDrivers = async (req: Request, res: Response): Promise<void> => {
@@ -66,7 +67,7 @@ export const getDriverById = async (req: Request, res: Response): Promise<void> 
 
 export const createDriver = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, licenseNumber, licenseCategory, licenseExpiry, contact, userId } = req.body;
+    const { name, licenseNumber, licenseCategory, licenseExpiry, contact, email } = req.body;
 
     // Check for duplicate license number
     const existing = await prisma.driver.findUnique({ where: { licenseNumber } });
@@ -75,25 +76,34 @@ export const createDriver = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    // If userId provided, verify the user exists and has DRIVER role
-    if (userId) {
-      const linkedUser = await prisma.user.findUnique({ where: { id: userId } });
-      if (!linkedUser) {
-        res.status(404).json({ error: 'Linked user account not found.' });
-        return;
-      }
-      if (linkedUser.role !== 'DRIVER') {
-        res.status(400).json({ error: 'Linked user must have the DRIVER role.' });
-        return;
-      }
-      // Check if user is already linked to another driver
-      const existingLink = await prisma.driver.findUnique({ where: { userId } });
-      if (existingLink) {
-        res.status(400).json({ error: 'This user account is already linked to another driver profile.' });
-        return;
-      }
+    // Email is required to auto-create login credentials
+    if (!email) {
+      res.status(400).json({ error: 'Email is required to create login credentials for the driver.' });
+      return;
     }
 
+    // Check email is not already taken
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      res.status(400).json({ error: 'A user account with this email already exists.' });
+      return;
+    }
+
+    // Auto-generate a temporary password
+    const tempPassword = `Driver@${Math.random().toString(36).slice(-6).toUpperCase()}`;
+    const hashedPassword = await bcrypt.hash(tempPassword, 10);
+
+    // Create the User login account with DRIVER role
+    const userAccount = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role: 'DRIVER',
+      },
+    });
+
+    // Create the Driver profile linked to the new User
     const driver = await prisma.driver.create({
       data: {
         name,
@@ -101,11 +111,18 @@ export const createDriver = async (req: Request, res: Response): Promise<void> =
         licenseCategory,
         licenseExpiry: new Date(licenseExpiry),
         contact,
-        ...(userId ? { userId } : {}),
+        userId: userAccount.id,
       },
     });
 
-    res.status(201).json(driver);
+    // Return driver + credentials so FM can share them with the driver
+    res.status(201).json({
+      ...driver,
+      credentials: {
+        email,
+        tempPassword,
+      },
+    });
   } catch (error) {
     console.error('CreateDriver error:', error);
     res.status(500).json({ error: 'Internal server error.' });

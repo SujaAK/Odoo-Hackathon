@@ -1,24 +1,30 @@
 import { getApps, initializeApp, cert, getApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import path from 'node:path';
+import dotenv from 'dotenv';
+
+// Ensure env is loaded (guards against import-order issues)
+dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const projectId = process.env.FIREBASE_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
 let privateKey = process.env.FIREBASE_PRIVATE_KEY;
 
-// Clean up private key formatting (e.g. escaped newlines, wrapping quotes)
+// Normalize private key — handles both:
+//   1. dotenvx/dotenv that already converted \n → real newlines
+//   2. Envs where literal \\n strings remain
 if (privateKey) {
-  privateKey = privateKey.replace(/\\n/g, '\n').replace(/^"|"$/g, '');
+  // Strip surrounding quotes if present (some .env parsers leave them)
+  privateKey = privateKey.replace(/^["']|["']$/g, '');
+  // If the key still has escaped \\n, replace with real newlines
+  if (privateKey.includes('\\n')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
 }
-
-// Check if credentials are still the default placeholders
-const isPlaceholder =
-  !privateKey ||
-  privateKey.includes('YOUR_PRIVATE_KEY_HERE') ||
-  (clientEmail && clientEmail.includes('xxxxx'));
 
 let app;
 if (getApps().length === 0) {
-  if (projectId && clientEmail && privateKey && !isPlaceholder) {
+  if (projectId && clientEmail && privateKey) {
     try {
       app = initializeApp({
         credential: cert({
@@ -27,17 +33,15 @@ if (getApps().length === 0) {
           privateKey,
         }),
       });
-      console.log('✅ Firebase Admin SDK initialized successfully.');
+      console.log('✅ Firebase Admin SDK initialized with service account credentials.');
     } catch (err: any) {
-      console.warn(
-        `⚠️  Firebase Admin initialization failed: ${err.message}. Falling back to default project configuration.`
-      );
+      console.warn(`⚠️  Firebase Admin cert() failed: ${err.message}`);
+      console.warn('   Falling back to projectId-only init. Google Sign-In token verification may fail.');
       app = initializeApp({ projectId: projectId || 'trasitops' });
     }
   } else {
-    console.warn(
-      '⚠️  Firebase Admin: Missing or placeholder credentials in .env. Google Sign-In verification will be unavailable.'
-    );
+    console.warn('⚠️  Firebase Admin: Missing credentials in .env. Falling back to projectId-only init.');
+    console.warn(`   projectId=${projectId}, clientEmail=${clientEmail ? 'set' : 'MISSING'}, privateKey=${privateKey ? 'set' : 'MISSING'}`);
     app = initializeApp({ projectId: projectId || 'trasitops' });
   }
 } else {
@@ -45,3 +49,4 @@ if (getApps().length === 0) {
 }
 
 export const adminAuth = getAuth(app);
+
