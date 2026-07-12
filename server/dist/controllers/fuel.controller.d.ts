@@ -1,0 +1,12 @@
+import { Request, Response } from 'express';
+export declare const getAllFuelLogs: (req: Request, res: Response) => Promise<void>;
+export declare const createFuelLog: (req: Request, res: Response) => Promise<void>;
+export declare const getAllExpenses: (req: Request, res: Response) => Promise<void>;
+export declare const createExpense: (req: Request, res: Response) => Promise<void>;
+export declare const getDashboardKPIs: (_req: Request, res: Response) => Promise<void>;
+export declare const getRecentTrips: (_req: Request, res: Response) => Promise<void>;
+export declare const getFuelEfficiency: (_req: Request, res: Response) => Promise<void>;
+export declare const getOperationalCost: (_req: Request, res: Response) => Promise<void>;
+export declare const getVehicleROI: (_req: Request, res: Response) => Promise<void>;
+export declare const getFleetUtilization: (_req: Request, res: Response) => Promise<void>;
+export declare const exportCSV: (req: Request, res: Response) => Promise<void>;

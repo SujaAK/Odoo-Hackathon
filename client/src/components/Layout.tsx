@@ -1,0 +1,22 @@
+import { Outlet } from 'react-router-dom';
+import Sidebar from './Sidebar';
+
+export default function Layout() {
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      <Sidebar />
+      <main
+        style={{
+          flex: 1,
+          marginLeft: '260px',
+          padding: '24px 32px',
+          background: 'var(--color-surface)',
+          minHeight: '100vh',
+          overflowY: 'auto',
+        }}
+      >
+        <Outlet />
+      </main>
+    </div>
+  );
+}
